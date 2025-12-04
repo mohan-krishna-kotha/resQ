@@ -2,9 +2,9 @@
   <img src="https://github.com/user-attachments/assets/1e7ceab6-443b-488d-af8f-ed17ec77cce0" alt="Food Ordering Website Logo">
 </p>
 
-<h1 align="center">Nirikshan: Real-Time Road Accident Detection System using YOLOv11 and CCTV Surveillance</h1>
+<h1 align="center">resQ: Real-Time Road Accident Detection System using YOLOv11 and CCTV Surveillance</h1>
 
-**Nirikshan** is an AI-powered real-time accident detection system designed to revolutionize road safety. By leveraging advanced computer vision technology, Nirikshan detects vehicle collisions through CCTV footage and instantly notifies highway authorities, enabling swift emergency responses.
+**resQ** is an AI-powered real-time accident detection system designed to revolutionize road safety. By leveraging advanced computer vision technology, Nirikshan detects vehicle collisions through CCTV footage and instantly notifies highway authorities, enabling swift emergency responses.
 
 ## 📝 Table of Contents
 

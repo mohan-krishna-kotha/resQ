@@ -243,38 +243,45 @@ export default function Page() {
 				}
 			}
 
-			if (data.accident_detected) {
-				const messageTimestamp = data.timestamp || Date.now();
+if (data.accident_detected) {
+    const messageTimestamp = data.timestamp || Date.now();
 
-				if (messageTimestamp > lastProcessedTimestamp) {
-					setLastProcessedTimestamp(messageTimestamp);
-					setAccidentDetected(true);
+    if (messageTimestamp > lastProcessedTimestamp) {
+        setLastProcessedTimestamp(messageTimestamp);
+        setAccidentDetected(true);
 
-					const camera =
-						cameraAtConnection || currentCCTVRef.current || selectedCCTV;
+        const camera =
+            cameraAtConnection || currentCCTVRef.current || selectedCCTV;
 
-					if (!camera) {
-						addLog('Error: No CCTV selected when accident detected', 'error');
-						return;
-					}
+        if (!camera) {
+            addLog('Error: No CCTV selected when accident detected', 'error');
+            return;
+        }
 
-					const confidence = data.confidence || 0;
-					addLog(
-						`⚠️ ACCIDENT DETECTED! (confidence: ${(confidence * 100).toFixed(1)}%)`,
-						'error'
-					);
+        const confidence = data.confidence || 0;
+        
+        // ===== NEW: Add severity, deformation, and injury info =====
+        const accidentLog = `🚨 ACCIDENT DETECTED! (confidence: ${(confidence * 100).toFixed(1)}%)
+├─ Type: ${data.accident_type || 'Unknown'}
+├─ Frame: ${data.frame_number || 'N/A'}
+├─ Severity: ${data.severity?.toUpperCase() || 'UNKNOWN'}
+├─ Deformation: ${data.deformation ? data.deformation.toFixed(2) : 'N/A'}
+├─ Injury Risk: ${data.injury_prediction || 'UNKNOWN'}
+└─ Location: ${data.location || 'Unknown'}`;
+        
+        addLog(accidentLog, 'error');
+        // ===== END NEW =====
 
-					toast({
-						title: 'Accident Detected!',
-						description: `Possible accident detected on camera: ${camera.name}`,
-						variant: 'destructive',
-						duration: 5000,
-					});
-				} else {
-					console.log('Ignoring duplicate accident detection message');
-				}
-			}
-
+        toast({
+            title: 'Accident Detected!',
+            description: `Possible accident detected on camera: ${camera.name}`,
+            variant: 'destructive',
+            duration: 5000,
+        });
+    } else {
+        console.log('Ignoring duplicate accident detection message');
+    }
+}
 			if (data.type === 'image_saved') {
 				const messageTimestamp = data.timestamp || Date.now();
 				const camera =
@@ -582,7 +589,7 @@ export default function Page() {
 									)}
 								</CardTitle>
 								<CardDescription className='text-gray-400'>
-									Real-time accident detection analysis
+									Accident detection analysis
 								</CardDescription>
 							</CardHeader>
 							<CardContent className='flex flex-grow flex-col p-0'>

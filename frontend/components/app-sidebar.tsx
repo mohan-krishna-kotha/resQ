@@ -38,7 +38,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
 		},
 		navCCTV: [
 			{
-				title: 'Live Monitoring',
+				title: 'Monitoring',
 				url: '/',
 				icon: Cctv,
 				isactive: true,
@@ -81,8 +81,8 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
 									<Command className='size-4' />
 								</div>
 								<div className='grid flex-1 text-left text-sm leading-tight'>
-									<span className='truncate font-semibold'>Nirikshan</span>
-									<span className='truncate text-xs'>Highway Dashboard</span>
+									<span className='truncate font-semibold'>resQ</span>
+									<span className='truncate text-xs'>Detection Dashboard</span>
 								</div>
 							</a>
 						</SidebarMenuButton>

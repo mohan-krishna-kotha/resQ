@@ -5,7 +5,7 @@ import { prisma } from "@/prisma";
 
 export const { handlers, signIn, signOut, auth } = NextAuth({
   adapter: PrismaAdapter(prisma),
-  secret: process.env.AUTH_SECRET,
+  secret: process.env.NEXTAUTH_SECRET, // <--- FIX: use NEXTAUTH_SECRET
   trustHost: true,
   providers: [
     GoogleProvider({
@@ -36,4 +36,3 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
     },
   },
 });
-

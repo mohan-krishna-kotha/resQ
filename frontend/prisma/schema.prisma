@@ -112,7 +112,7 @@ enum IncidentType {
 model Incident {
   id                 String             @id @default(cuid())
   cctvId             String
-  cctv               CCTV               @relation(fields: [cctvId], references: [id])
+  cctv               CCTV               @relation(fields: [cctvId], references: [id], onDelete: Cascade)
   detectedAt         DateTime           @default(now())
   location           String?
   latitude           Float?

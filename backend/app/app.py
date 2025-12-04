@@ -1,7 +1,8 @@
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect, UploadFile, File
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, UploadFile, File, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import JSONResponse
+
 import cv2
 import numpy as np
 import json
@@ -14,6 +15,8 @@ from collections import deque
 import base64
 import traceback
 from pathlib import Path
+import pandas as pd
+import threading
 
 # Optional imports - wrap in try/except in case they don't exist
 try:
@@ -42,27 +45,20 @@ import supervision as sv
 
 # ===== PATHS =====
 BASE_DIR = Path(__file__).resolve().parent
-BACKEND_DIR = BASE_DIR.parent  # backend/ directory
-PROJECT_ROOT = BACKEND_DIR.parent  # Project root
-FRONTEND_DIR = PROJECT_ROOT / "frontend"  # frontend/ directory
+BACKEND_DIR = BASE_DIR.parent
+PROJECT_ROOT = BACKEND_DIR.parent
+FRONTEND_DIR = PROJECT_ROOT / "frontend"
 
-# Upload directories
 UPLOADS_DIR = BACKEND_DIR / "uploads"
 UPLOADS_DIR.mkdir(exist_ok=True, parents=True)
-
 ACCIDENT_IMAGES_DIR = BASE_DIR / "accident_images"
 ACCIDENT_IMAGES_DIR.mkdir(exist_ok=True)
-
 PUBLIC_IMAGES_DIR = FRONTEND_DIR / "public" / "accident_images"
 PUBLIC_IMAGES_DIR.mkdir(exist_ok=True, parents=True)
 
 # ===== APP SETUP =====
 app = FastAPI(title="Nirikshan — Accident Detection API", version="1.0.0")
-
-# Mount static files
 app.mount("/accident_images", StaticFiles(directory=str(ACCIDENT_IMAGES_DIR)), name="accident_images")
-
-# Add CORS middleware
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -75,7 +71,6 @@ app.add_middleware(
 pipeline = TrainingPipeline()
 CONFIDENCE_THRESHOLD = getattr(pipeline, "CONFIDENCE_THRESHOLD", getattr(pipeline, "confidence_threshold", 0.4))
 
-# WebSocket connection tracking
 active_connections: Dict[str, WebSocket] = {}
 detected_accidents: Dict[str, Set[int]] = {}
 frame_buffers: Dict[str, Deque] = {}
@@ -107,6 +102,27 @@ CLASS_NAMES = {
 VEHICLE_CLASS_IDS = [0, 4]
 ACCIDENT_CLASS_IDS = [1, 2, 3, 5, 6, 7, 8]
 
+# ===== ACCIDENT EVENTS FOR EXCEL =====
+accident_events_list = []
+excel_save_lock = threading.Lock()
+
+def calculate_mfcs(event):
+    return float(event.get("confidence", 0))
+
+def calculate_ers(event):
+    deformation = float(event.get("deformation", 0))
+    speed = float(event.get("speed", 0)) if "speed" in event else 0
+    return round((deformation + speed) / 2, 2)
+
+def calculate_iscs(event):
+    sev_map = {"LOW": 0, "MEDIUM": 0.5, "HIGH": 1}
+    return sev_map.get(str(event.get("severity", "")).upper(), 0)
+
+def save_events_to_excel():
+    with excel_save_lock:
+        df = pd.DataFrame(accident_events_list)
+        df.to_excel("accident_events.xlsx", index=False)
+
 # ===== HELPER FUNCTIONS =====
 def format_location(latitude: Optional[float], longitude: Optional[float]) -> str:
     if latitude is None or longitude is None:
@@ -134,7 +150,6 @@ def save_accident_image(frame: np.ndarray, filename_prefix: str = "accident") ->
         filename = f"{filename_prefix}_{timestamp}_{unique_id}.jpg"
         backend_path = ACCIDENT_IMAGES_DIR / filename
         public_path = PUBLIC_IMAGES_DIR / filename
-        
         success = cv2.imwrite(str(backend_path), frame, [cv2.IMWRITE_JPEG_QUALITY, 95])
         if not success:
             logging.error(f"cv2.imwrite failed for {backend_path}")
@@ -195,6 +210,18 @@ async def list_images():
         })
     return {"images": images, "count": len(images)}
 
+@app.delete("/cctv/{video_name}")
+async def delete_cctv(video_name: str):
+    try:
+        file_path = UPLOADS_DIR / video_name
+        if not file_path.exists():
+            return JSONResponse(status_code=404, content={'error': 'File not found'})
+        os.remove(file_path)
+        return {"success": True}
+    except Exception as e:
+        print(f"Error deleting {video_name}:", e)
+        return JSONResponse(status_code=500, content={'error': str(e)})
+
 # ===== WEBSOCKET ENDPOINT =====
 @app.websocket("/ws/detect")
 async def accident_detection_websocket(websocket: WebSocket):
@@ -203,22 +230,18 @@ async def accident_detection_websocket(websocket: WebSocket):
     active_connections[connection_id] = websocket
     detected_accidents[connection_id] = set()
     logging.info(f"Client connected: {connection_id}")
-
     try:
         await websocket.send_json({
             "type": "ready",
             "message": "Backend ready for video processing",
             "severity": "info"
         })
-        
         while True:
             message = await websocket.receive_text()
             data = json.loads(message)
-            
             if data.get("type") == "ping":
                 await websocket.send_json({"type": "pong"})
                 continue
-            
             if data.get("type") == "process_video":
                 video_url = data.get("video_url")
                 cctv_metadata[connection_id] = {
@@ -229,7 +252,6 @@ async def accident_detection_websocket(websocket: WebSocket):
                 }
                 if video_url:
                     await process_video_stream(websocket, video_url, connection_id)
-                    
     except WebSocketDisconnect:
         logging.info(f"Client disconnected: {connection_id}")
     except Exception:
@@ -260,7 +282,6 @@ async def process_video_stream(websocket: WebSocket, video_url: str, connection_
         in_accident_state = False
         accident_state_frames = 0
 
-        # ===== FIX: CORRECT VIDEO PATH LOGIC =====
         if video_url.startswith("/"):
             filename = os.path.basename(video_url)
             video_path = str(UPLOADS_DIR / filename)
@@ -268,19 +289,15 @@ async def process_video_stream(websocket: WebSocket, video_url: str, connection_
             video_path = video_url
 
         logging.info(f"[{connection_id}] Opening video from: {video_path}")
-        
-        # Check if file exists
+
         if not os.path.exists(video_path):
             logging.error(f"[{connection_id}] Video path does not exist: {video_path}")
-            
-            # LIST FILES IN UPLOADS for debugging
             try:
                 files = list(UPLOADS_DIR.glob("*.mp4"))
                 file_names = [f.name for f in files]
                 logging.info(f"[{connection_id}] Files in uploads/: {file_names}")
             except Exception as e:
                 logging.error(f"Could not list uploads: {e}")
-            
             await websocket.send_json({
                 "type": "error",
                 "message": f"Video file not found: {os.path.basename(video_url)}. Check backend/uploads/",
@@ -292,7 +309,6 @@ async def process_video_stream(websocket: WebSocket, video_url: str, connection_
         if not cap.isOpened():
             raise Exception(f"Could not open video file: {video_path}")
 
-
         original_fps = cap.get(cv2.CAP_PROP_FPS) or 24.0
         total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT) or 0)
         target_fps = min(original_fps, 24.0)
@@ -300,7 +316,6 @@ async def process_video_stream(websocket: WebSocket, video_url: str, connection_
         width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH) or 1280)
         height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT) or 720)
         scale_factor = 1.0
-        
         if width > 1280:
             scale_factor = 1280 / width
             width = 1280
@@ -326,15 +341,12 @@ async def process_video_stream(websocket: WebSocket, video_url: str, connection_
             ret, frame = cap.read()
             if not ret:
                 break
-                
             frame_count += 1
-            
+
             if scale_factor < 1.0:
                 frame = cv2.resize(frame, (width, height))
-            
             frame_buffers[connection_id].append(frame.copy())
             boxes, class_ids, confidences = safe_detect_objects(frame)
-            
             if boxes is not None and hasattr(boxes, "shape") and boxes.shape[0] > 0:
                 boxes_np = np.array(boxes, dtype=np.float32)
                 confidences_np = np.array(confidences, dtype=np.float32)
@@ -343,11 +355,9 @@ async def process_video_stream(websocket: WebSocket, video_url: str, connection_
                 tracked_detections = tracker.update_with_detections(detections)
             else:
                 tracked_detections = sv.Detections.empty()
-
             display_frame = frame.copy()
             accident_indices = []
             accident_detected = False
-
             if len(tracked_detections) > 0:
                 for i in range(len(tracked_detections)):
                     track_id = tracked_detections.tracker_id[i]
@@ -356,25 +366,20 @@ async def process_video_stream(websocket: WebSocket, video_url: str, connection_
                     class_id = int(tracked_detections.class_id[i])
                     confidence = float(tracked_detections.confidence[i])
                     is_accident = class_id in ACCIDENT_CLASS_IDS
-                    
                     if is_accident and confidence >= CONFIDENCE_THRESHOLD:
                         accident_indices.append(i)
                         accident_detected = True
-                    
                     if track_id not in traces[connection_id]:
                         traces[connection_id][track_id] = deque(maxlen=MAX_TRACE_POINTS)
-                    
                     bbox = tracked_detections.xyxy[i]
                     center_x = int((bbox[0] + bbox[2]) / 2)
                     center_y = int((bbox[1] + bbox[3]) / 2)
                     traces[connection_id][track_id].append((center_x, center_y))
-
-            # ===== SEVERITY & INJURY PREDICTION =====
+            # ===== SEVERITY & INJURY PREDICTION and EXCEL LOGGING =====
             if accident_detected and not in_accident_state:
                 in_accident_state = True
                 accident_state_frames = 0
                 accident_found = True
-                
                 if accident_indices:
                     idx = accident_indices[0]
                     confidence = float(tracked_detections.confidence[idx])
@@ -382,20 +387,14 @@ async def process_video_stream(websocket: WebSocket, video_url: str, connection_
                     class_name = CLASS_NAMES.get(class_id, "Unknown")
                     location = "Unknown location"
                     meta = cctv_metadata.get(connection_id, {})
-                    
                     if meta.get("latitude") is not None and meta.get("longitude") is not None:
                         location = format_location(meta["latitude"], meta["longitude"])
-
-                    # Feature extraction
                     pre_frame = frame_buffers[connection_id][0] if len(frame_buffers[connection_id]) > 0 else display_frame
                     deformation = compute_deformation(pre_frame, display_frame)
                     speed = estimate_speed(list(frame_buffers[connection_id]))
                     pose_features = analyze_pose(display_frame)
                     features = [deformation, speed] + pose_features
-
-                    # Predict severity & injury
                     severity, injury = predict_severity(features)
-
                     await websocket.send_json({
                         "type": "accident",
                         "accident_detected": True,
@@ -404,12 +403,11 @@ async def process_video_stream(websocket: WebSocket, video_url: str, connection_
                         "accident_type": class_name,
                         "location": location,
                         "severity": severity,
+                        "deformation": deformation,
                         "injury_prediction": injury,
                         "message": f"{class_name} detected at frame {frame_count}",
                         "timestamp": datetime.now().timestamp()
                     })
-
-                    # Save accident image
                     image_url = save_accident_image(display_frame)
                     if image_url:
                         await websocket.send_json({
@@ -423,15 +421,31 @@ async def process_video_stream(websocket: WebSocket, video_url: str, connection_
                             "location": location,
                             "timestamp": datetime.now().timestamp()
                         })
-
+                    # ===== ACCIDENT EXCEL LOGGING =====
+                    accident_event = {
+                        "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                        "confidence": confidence,
+                        "accident_type": class_name,
+                        "frame": frame_count,
+                        "severity": severity,
+                        "deformation": deformation,
+                        "injury_risk": injury,
+                        "location": location,
+                        "camera_id": meta.get("camera_id"),
+                        "camera_name": meta.get("name"),
+                        "speed": speed,
+                    }
+                    accident_event["MFCS"] = calculate_mfcs(accident_event)
+                    accident_event["ERS"]  = calculate_ers(accident_event)
+                    accident_event["ISCS"] = calculate_iscs(accident_event)
+                    accident_events_list.append(accident_event)
+                    save_events_to_excel()
             if in_accident_state:
                 accident_state_frames += 1
                 if accident_state_frames >= ACCIDENT_STATE_DURATION:
                     in_accident_state = False
-
             _, buffer = cv2.imencode('.jpg', display_frame, [cv2.IMWRITE_JPEG_QUALITY, 85])
             encoded_frame = base64.b64encode(buffer).decode('utf-8')
-
             await websocket.send_json({
                 "type": "frame",
                 "frame": encoded_frame,
@@ -441,7 +455,6 @@ async def process_video_stream(websocket: WebSocket, video_url: str, connection_
                 "total_frames": total_frames,
                 "progress": frame_count / total_frames if total_frames > 0 else 0
             })
-
             if frame_count % 30 == 0:
                 await websocket.send_json({
                     "type": "progress",
@@ -450,19 +463,16 @@ async def process_video_stream(websocket: WebSocket, video_url: str, connection_
                     "frame_count": frame_count,
                     "progress": frame_count / total_frames if total_frames > 0 else 0
                 })
-
             now = asyncio.get_event_loop().time()
             elapsed = now - last_frame_time
             sleep_time = max(0, frame_interval - elapsed)
             await asyncio.sleep(sleep_time)
             last_frame_time = asyncio.get_event_loop().time()
-
         cap.release()
         meta = cctv_metadata.get(connection_id, {})
         location = "Unknown location"
         if meta.get("latitude") is not None and meta.get("longitude") is not None:
             location = format_location(meta["latitude"], meta["longitude"])
-
         await websocket.send_json({
             "type": "processing_complete",
             "message": "Video processing completed",
@@ -472,7 +482,6 @@ async def process_video_stream(websocket: WebSocket, video_url: str, connection_
             "location": location,
             "timestamp": datetime.now().timestamp()
         })
-        
     except Exception as e:
         logging.exception("Error processing video stream")
         try:
@@ -484,31 +493,23 @@ async def process_video_stream(websocket: WebSocket, video_url: str, connection_
         except Exception:
             logging.exception("Failed to send error message to websocket")
 
-# ===== IMAGE DETECTION =====
-@app.post("/detect/image")
-async def detect_image(file: UploadFile = File(...)):
-    try:
-        contents = await file.read()
-        nparr = np.frombuffer(contents, np.uint8)
-        img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
-        result = pipeline.process_frame(img) if hasattr(pipeline, "process_frame") else {"error": "No process_frame method"}
-        return JSONResponse(content={"result": result})
-    except Exception:
-        logging.exception("Error in detect_image")
-        return JSONResponse(status_code=500, content={"error": "Failed to process image"})
-
-# ===== VIDEO UPLOAD & DETECTION =====
+# ===== SECURE VIDEO UPLOAD & DETECTION (single, robust endpoint!) =====
 @app.post("/detect/video")
 async def detect_video(file: UploadFile = File(...)):
-    """
-    Receives an uploaded video and saves it to UPLOADS_DIR.
-    Returns: filename and status (does NOT run model for upload)
-    """
     try:
-        contents = await file.read()
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        safe_name = "".join(c for c in file.filename if c.isalnum() or c in "-_.")
-        filename = f"videoUpload_{timestamp}_{uuid.uuid4().hex[:8]}_{safe_name}"
+        max_size = 500 * 1024 * 1024  # 500 MB
+        size = 0
+        chunks = []
+        while True:
+            chunk = await file.read(1024 * 1024)  # 1 MB per read
+            if not chunk:
+                break
+            size += len(chunk)
+            if size > max_size:
+                raise HTTPException(status_code=413, detail="File too large. Max 500MB allowed.")
+            chunks.append(chunk)
+        contents = b"".join(chunks)
+        filename = file.filename
         video_path = UPLOADS_DIR / filename
         with open(video_path, "wb") as f:
             f.write(contents)

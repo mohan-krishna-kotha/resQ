@@ -84,7 +84,7 @@ npm install
    - Create a new project and configure OAuth consent.
    - Set the Authorized Redirect URI to:
      ```
-     http://localhost:3000/api/auth/callback/google
+     http://localhost:3001/api/auth/callback/google
      ```
 
 3. **Create or Update the Following Files in the `frontend` Directory:**

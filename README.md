@@ -2,9 +2,9 @@
   <img src="https://github.com/user-attachments/assets/1e7ceab6-443b-488d-af8f-ed17ec77cce0" alt="Food Ordering Website Logo">
 </p>
 
-<h1 align="center">resQ: Real-Time Road Accident Detection System using YOLOv11 and CCTV Surveillance</h1>
+<h1 align="center">resQ: A Road Accident Detection System using YOLOv11 and CCTV Surveillance</h1>
 
-**resQ** is an AI-powered real-time accident detection system designed to revolutionize road safety. By leveraging advanced computer vision technology, Nirikshan detects vehicle collisions through CCTV footage and instantly notifies highway authorities, enabling swift emergency responses.
+**resQ** is an AI-powered accident detection system designed to revolutionize road safety. By leveraging advanced computer vision technology, it detects vehicle collisions through CCTV footage and instantly notifies highway authorities, enabling swift emergency responses, and also provides the sevarity of the accident by displaying the range of the damage (low, high, midum) according to the deformation of the vechiles that appeares at accident incident.
 
 ## 📝 Table of Contents
 
@@ -22,7 +22,7 @@
 12. [Support & Contact Information](#support--contact-information)
 
 ## Key Features ✨
-- **Real-Time Detection:** Powered by YOLO-based object detection for accurate identification of vehicle collisions.
+- **Accident Detection:** Powered by YOLO-based object detection for accurate identification of vehicle collisions with respect to seviyarity analysis.
 - **Instant Alerts:** Sends immediate notifications to control centers via WebSocket integration.
 - **Verification Workflow:** Provides an intuitive dashboard for authorities to review and act on detected incidents.
 - **Scalable Design:** Seamlessly integrates with existing CCTV infrastructure for widespread deployment.
@@ -30,7 +30,7 @@
 ## Built With
 
 <p>
-  <img src="https://skillicons.dev/icons?i=nextjs,fastapi,postgres,tailwindcss,prisma,pytorch" alt="Tech Stack" />
+  <img src="https://skillicons.dev/icons?i=nodejs,postgres,prisma,pytorch" alt="Tech Stack" />
 </p>
 
 ## 🚀 Getting Started Guide
@@ -58,8 +58,8 @@ Ensure your CUDA version matches your PyTorch build.
 ### 1. 📁 Clone the Repository
 
 ```bash
-git clone https://github.com/VishalRMahajan/Nirikshan.git
-cd Nirikshan
+git clone https://github.com/mohan-krishna-kotha/resQ.git
+cd resQ
 ```
 
 ### 2. ⚙️ Set Up the Frontend
@@ -156,7 +156,7 @@ The frontend will be available at `http://localhost:3000`.
 
 ## How It Works 🚦
 
-Nirikshan is an AI-powered accident detection system that leverages advanced computer vision technology to identify vehicle collisions in real-time and facilitate rapid emergency response. Here's how it works:
+resQ is an AI-powered accident detection system that leverages advanced computer vision technology to identify vehicle collisions in CCTV Surveillance and facilitate rapid emergency response. Here's how it works:
 
 ### **Step-by-Step Process**
 
@@ -166,10 +166,13 @@ Nirikshan is an AI-powered accident detection system that leverages advanced com
 2. **CCTV Captures Footage**  
    The video feed is processed using a YOLO-based vehicle collision detection model to identify accidents with high accuracy.
 
-3. **Instant Alert Sent**  
+3. **Seviyarity analysis**
+   By deformation score of the vchiles which appeared at accident incident; the term sevarity is analysed like (midum,high, low).
+   
+4. **Instant Alert Sent**  
    Upon detecting an accident, the backend system sends an immediate alert to highway authorities via WebSocket integration.
 
-4. **Verification and Response**  
+5. **Verification and Response**  
    Authorities verify the incident through an intuitive dashboard and dispatch emergency services to the scene.
 
 ## **System Architecture**
@@ -227,4 +230,4 @@ This project is licensed under the [MIT License](LICENSE). See the LICENSE file 
 Special thanks to [Roboflow](https://universe.roboflow.com/deteccion-h92uo/deteccion_accidentes) for providing the dataset used for training the model. 
 
 ## 📬 Support & Contact Information
-For any queries, feedback, or support, feel free to reach out at: **vism06@gmail.com**
+For any queries, feedback, or support, feel free to reach out at: **alwaysmohankrishnan@gmail.com**
